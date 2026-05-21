@@ -24,7 +24,21 @@ python dump_chunks.py --doi "10.1016/j.inpa.2026.02.006"
 pip install -r requirements.txt
 ```
 
-### 3. Ingest PDFs
+### 2. Konfigurasi Qdrant (Lokal vs Cloud)
+
+Secara bawaan (*default*), *database* akan disimpan di folder lokal `./qdrant_db`. 
+Namun, jika Anda ingin menggunakan **Qdrant Cloud** untuk skalabilitas (agar Colab dan Lokal terhubung ke *database* yang sama), Anda cukup menyalin file `.env`:
+
+```bash
+cp .env.example .env
+```
+Kemudian isi file `.env` tersebut dengan *Endpoint URL* dan *API Key* Anda:
+```ini
+QDRANT_URL="https://xxx.cloud.qdrant.io"
+QDRANT_API_KEY="api_key_anda"
+```
+
+### 3. Ingesting PDFs
 
 ```bash
 # Single file
