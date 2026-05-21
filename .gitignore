@@ -6,6 +6,8 @@ __pycache__/
 # C extensions
 *.so
 
+*.pdf
+
 # Distribution / packaging
 .Python
 build/
@@ -67,7 +69,7 @@ instance/
 
 # Scrapy stuff:
 .scrapy
-
+.pdf
 # Sphinx documentation
 docs/_build/
 
@@ -216,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# === PEDE Project ===
+data/
+uploads/
+*.pdf
