@@ -5,8 +5,17 @@ from core.vector_store import VectorStore
 
 # 1. Pastikan API Key tersedia di environment
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Fallback untuk Google Colab
 if not GEMINI_API_KEY:
-    print("[ERROR] GEMINI_API_KEY tidak ditemukan di environment variables.")
+    try:
+        from google.colab import userdata
+        GEMINI_API_KEY = userdata.get('GEMINI_API_KEY')
+    except (ImportError, Exception):
+        pass
+
+if not GEMINI_API_KEY:
+    print("[ERROR] GEMINI_API_KEY tidak ditemukan di environment variables ataupun Google Colab userdata.")
     print("Cara set di Windows (PowerShell): $env:GEMINI_API_KEY=\"API_KEY_ANDA\"")
     sys.exit(1)
 
