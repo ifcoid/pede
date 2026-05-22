@@ -25,6 +25,7 @@ Tipe Model: Model dense standar vs model multi-bahasa (jika dokumen Anda berbaha
 | 1000 | 200 | Hybrid (Header + Recursive) | BAAI/bge-m3 (Dense 1024-dim) | 5 | Ya (DOI) | - | - | - | *Baseline saat ini* |
 | 500 | 100 | Hybrid (Header + Recursive) | BAAI/bge-m3 (Dense 1024-dim) | 10 | Ya (DOI) | - | - | - | *Eksperimen: Chunk kecil, Top-K besar* |
 | 1000 | 200 | Recursive Statis | sentence-transformers/all-MiniLM-L6-v2 | 5 | Tidak | - | - | - | *Eksperimen: Model ringan tanpa filter* |
+| 1000 | 200 | Semantic Chunking | nomic-ai/nomic-embed-text-v1.5 (Dense 768-dim) | 5 | Ya (DOI) | - | - | - | *Eksperimen: Model Nomic dengan pemahaman konteks panjang* |
 
 ## Panduan Pengisian Benchmarking
 
