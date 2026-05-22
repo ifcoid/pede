@@ -120,76 +120,37 @@ python ingest.py --search "Apa hasil eksperimennya?" --doi "10.1016/j.inpa.2026.
 
 ## 🤖 Integration with Golang Agentic AI
 
-Karena pipeline ini menggunakan model *embedding* lokal dan Qdrant, agen AI berbahasa Golang Anda dapat dengan mudah melakukan kueri (RAG) ke database ini.
+Proyek ini telah dilengkapi dengan purwarupa **Agentic AI** berbasis Golang di dalam folder `agent-go/`. 
 
-### Prasyarat di Golang
-1. **Library Qdrant Go**: Gunakan SDK resmi `github.com/qdrant/go-client` atau cukup gunakan HTTP REST API Qdrant.
-2. **Embedding API (Ollama / Python)**: Karena Golang tidak memiliki pustaka native yang efisien untuk _Sentence-Transformers_, cara termudah mem-vektorisasi pertanyaan (_query_) di Golang adalah dengan **Ollama**.
-   - Jalankan: `ollama run bge-m3`
+Agen Golang ini menggunakan SDK `github.com/google/generative-ai-go` dan dilengkapi kemampuan **Function Calling** (Tools). Ia tidak memanggil Qdrant secara langsung, melainkan menggunakan API Server Python (`api.py`) sebagai jembatan.
 
-### Langkah-langkah (Workflow Agent Golang)
+### Arsitektur Agentic RAG
+1. **User Prompt:** Anda bertanya *"Apa hasil eksperimen jurnal X?"* di terminal Golang.
+2. **Gemini Reasoning:** LLM Gemini menyadari bahwa itu adalah pertanyaan akademis, lalu ia memutuskan untuk menggunakan fungsi `query_scientific_database`.
+3. **Golang Action:** Golang menangkap permintaan fungsi tersebut, lalu mengirim HTTP POST `{"query": "...", "doi": "..."}` ke `http://localhost:8000/search`.
+4. **Python RAG:** FastAPI meng-embed *query* via BGE-M3, mencari 5 *chunks* terdekat di Qdrant, dan mengembalikannya ke Golang.
+5. **Synthesis:** Golang menyodorkan 5 *chunks* tersebut ke Gemini, dan Gemini merangkumnya menjadi jawaban akhir yang sangat akurat.
 
-**1. Vektorisasi Pertanyaan (Query Embedding)**
-Ubah pertanyaan pengguna menjadi vektor 1024-dimensi.
+### Cara Menjalankan Agen Golang
+1. Pastikan server API Python berjalan:
+   ```bash
+   uvicorn api:app --port 8000
+   ```
+2. Buka terminal baru, masuk ke folder `agent-go`:
+   ```bash
+   cd agent-go
+   ```
+3. Set *environment variable* untuk Gemini API Key Anda:
+   ```bash
+   # Windows PowerShell
+   $env:GEMINI_API_KEY="AIzaSy..."
+   ```
+4. Jalankan agen:
+   ```bash
+   go run .
+   ```
 
-```go
-package main
-
-import (
-	"bytes"
-	"encoding/json"
-	"net/http"
-)
-
-func embedQuery(query string) ([]float32, error) {
-	reqBody, _ := json.Marshal(map[string]string{
-		"model":  "bge-m3",
-		"prompt": query,
-	})
-
-	resp, err := http.Post("http://localhost:11434/api/embeddings", "application/json", bytes.NewBuffer(reqBody))
-	// Parse response JSON dan kembalikan array of floats
-    // ...
-}
-```
-
-**2. Pencarian Semantik ke Qdrant**
-Kirim vektor tersebut ke Qdrant REST API (Port 6333) atau via gRPC (Port 6334).
-
-```go
-func searchQdrant(vector []float32) {
-    reqBody, _ := json.Marshal(map[string]interface{}{
-		"vector": vector,
-		"limit":  5, // Ambil 5 chunk paling relevan
-		"with_payload": true,
-	})
-	
-	resp, _ := http.Post("http://localhost:6333/collections/scientific_articles/points/search", "application/json", bytes.NewBuffer(reqBody))
-	
-    // Hasilnya akan memuat "payload" (berisi text asli, doi, section_header, dll)
-}
-```
-
-**3. Injeksi Konteks ke Agen LLM**
-Setelah Qdrant mengembalikan 5 _chunks_ terbaik, gabungkan payload `content` tersebut ke dalam *System Prompt* agen AI Anda.
-
-```go
-// Contoh System Prompt Agent:
-systemPrompt := `Anda adalah asisten AI Peneliti. Gunakan konteks saintifik berikut untuk menjawab pertanyaan pengguna.
-Konteks didapatkan dari jurnal ilmiah:
-`
-
-for _, hit := range qdrantHits {
-    // Inject teks beserta info metadatanya!
-    systemPrompt += fmt.Sprintf("\n[Bagian: %s | Sumber: %s]\n%s\n", 
-        hit.Payload["section_header"], 
-        hit.Payload["title"], 
-        hit.Payload["content"],
-    )
-}
-
-// Terakhir, kirim systemPrompt ini ke OpenAI / Gemini / Claude via Go SDK!
-```
+Selamat bereksperimen dengan Agentic RAG Anda!
 
 ## License
 
