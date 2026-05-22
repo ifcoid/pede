@@ -1,6 +1,6 @@
 # Data Ingestion & Vector Retrieval
 
-A. Strategi Pemotongan Teks (Chunking)
+### A. Strategi Pemotongan Teks (Chunking)
 Ini akan sangat memengaruhi apa yang direpresentasikan oleh vektor.
 
 Ukuran (Size): 128, 256, 512, 1024 token.
@@ -9,14 +9,14 @@ Tumpang Tindih (Overlap): 0%, 10%, 25%.
 
 Metode: Pemotongan statis (jumlah karakter fix) vs Pemotongan sintaksis (berhenti di titik/akhir paragraf) vs Semantic Chunking (berhenti saat topik berubah).
 
-B. Representasi Vektor (Embedding Model)
+### B. Representasi Vektor (Embedding Model)
 Model embedding menentukan kualitas pemahaman semantik dari database.
 
 Dimensi Vektor: Membandingkan model dimensi kecil (misal: 384 dimensi pada MiniLM) versus dimensi besar (misal: 1536 dimensi pada OpenAI atau 1024 pada BGE-M3).
 
 Tipe Model: Model dense standar vs model multi-bahasa (jika dokumen Anda berbahasa Indonesia).
 
-C. Variasi Tipe Query (Query Diversity)
+### C. Variasi Tipe Query (Query Diversity)
 Untuk mengevaluasi ketangguhan sistem pencarian secara komprehensif, pengujian (metrik *Hit Rate*) harus menggunakan variasi kueri berikut:
 
 1. **Factoid/Simple Query:** Pertanyaan langsung (Misal: "Berapa dimensi dari model embedding BGE-M3?").
