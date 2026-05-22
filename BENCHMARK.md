@@ -16,16 +16,22 @@ Dimensi Vektor: Membandingkan model dimensi kecil (misal: 384 dimensi pada MiniL
 
 Tipe Model: Model dense standar vs model multi-bahasa (jika dokumen Anda berbahasa Indonesia).
 
-## Pandung Pengisian Bencmarking
+C. Variasi Tipe Query (Query Diversity)
+Untuk mengevaluasi ketangguhan sistem pencarian secara komprehensif, pengujian (metrik *Hit Rate*) harus menggunakan variasi kueri berikut:
+
+1. **Factoid/Simple Query:** Pertanyaan langsung (Misal: "Berapa dimensi dari model embedding BGE-M3?").
+2. **Reasoning/Complex Query:** Pertanyaan yang membutuhkan sintesis konsep (Misal: "Mengapa IVF-PQ lebih hemat memori dibandingkan HNSW?").
+3. **Paraphrased/Semantic Query:** Pertanyaan yang sengaja TIDAK menggunakan istilah yang ada di dalam teks, tetapi maknanya sama. Ini adalah ujian sesungguhnya bagi sebuah *Vector Database*.
+4. **Conversational/Noisy Query:** Pertanyaan dengan gaya bahasa kasual, tidak baku, atau mengandung sedikit *typo*, menyerupai ketikan pengguna asli di dunia nyata.
 
 ## Hasil Benchmarking
 
-| Ukuran Chunk (Chars) | Overlap (Chars) | Metode Chunking | Model Embedding | Top-K (Limit) | Filter Metadata | Hit Rate (Recall@K) | Rata-rata Latensi (ms) | Ukuran Index DB (MB) | Catatan / Insight RAG |
-|:---:|:---:|:---|:---|:---:|:---:|:---:|:---:|:---:|:---|
-| 1000 | 200 | Hybrid (Header + Recursive) | BAAI/bge-m3 (Dense 1024-dim) | 5 | Ya (DOI) | - | - | - | *Baseline saat ini* |
-| 500 | 100 | Hybrid (Header + Recursive) | BAAI/bge-m3 (Dense 1024-dim) | 10 | Ya (DOI) | - | - | - | *Eksperimen: Chunk kecil, Top-K besar* |
-| 1000 | 200 | Recursive Statis | sentence-transformers/all-MiniLM-L6-v2 | 5 | Tidak | - | - | - | *Eksperimen: Model ringan tanpa filter* |
-| 1000 | 200 | Semantic Chunking | nomic-ai/nomic-embed-text-v1.5 (Dense 768-dim) | 5 | Ya (DOI) | - | - | - | *Eksperimen: Model Nomic dengan pemahaman konteks panjang* |
+| Ukuran Chunk | Overlap | Metode Chunking | Model Embedding | Dukungan Bahasa | Tipe Query Uji | Top-K | Filter Metadata | Hit Rate | Latensi | Ukuran Index DB | Catatan |
+|:---:|:---:|:---|:---|:---|:---|:---:|:---:|:---:|:---:|:---:|:---|
+| 1000 | 200 | Hybrid | BAAI/bge-m3 | Multi-bahasa (>100) | Semantic/Paraphrased | 5 | Ya (DOI) | - | - | - | *BGE-M3: Juara untuk kueri lintas bahasa* |
+| 500 | 100 | Hybrid | BAAI/bge-m3 | Multi-bahasa (>100) | Reasoning/Complex | 10 | Ya (DOI) | - | - | - | *Eksperimen: Chunk kecil, Top-K besar* |
+| 1000 | 200 | Statis | sentence-transformers/all-MiniLM-L6-v2 | Hanya Inggris | Factoid | 5 | Tidak | - | - | - | *MiniLM: Sangat cepat tapi buruk di bahasa Indonesia* |
+| 1000 | 200 | Semantic | nomic-ai/nomic-embed-text-v1.5 | Mayoritas Inggris | Conversational | 5 | Ya (DOI) | - | - | - | *Nomic: Konteks sangat panjang* |
 
 ## Panduan Pengisian Benchmarking
 
@@ -49,4 +55,8 @@ Evaluasi Sistem *Retrieval* (Pengambilan Data) adalah nyawa dari arsitektur RAG.
 
 ### 5. `Ukuran Index DB (MB)`
 - **Definisi:** Ukuran total folder *database* lokal (contoh: `qdrant_db/`) untuk jumlah kumpulan jurnal uji tertentu.
-- **Insight:** Berhubungan langsung dengan konsumsi *Storage* dan *RAM/VRAM* di *Cloud*. Apakah mengorbankan akurasi sebesar 2% sepadan dengan penghematan penyimpanan sebesar 50%? Jawabannya dapat dievaluasi di sini.
+- **Insight:** Berhubungan langsung dengan konsumsi *Storage* dan *RAM/VRAM* di *Cloud*. Apakah mengorbankan akurasi sebesar 2% sepadan dengan penghematan penyimpanan sebesar 50%? Jawabannya dapat dievaluasi di sini.
+
+### 6. `Dukungan Bahasa (Language Support)`
+- **Definisi:** Kemampuan model untuk memetakan bahasa yang berbeda ke dalam ruang semantik yang berdekatan (*Cross-Lingual Information Retrieval*).
+- **Insight:** Sangat krusial jika *database* Anda berisi jurnal Bahasa Inggris, tetapi *user* memasukkan pencarian (*query*) dalam Bahasa Indonesia. Model *Multi-bahasa* seperti BGE-M3 dapat mempertemukan *query* Bahasa Indonesia dengan teks jurnal Bahasa Inggris secara cerdas, sedangkan model *Hanya Inggris* (seperti MiniLM) akan gagal total dalam skenario lintas-bahasa ini.
