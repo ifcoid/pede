@@ -88,24 +88,57 @@ def extract_abstract(markdown_text: str) -> str:
 
 
 def extract_title_from_markdown(markdown_text: str) -> str:
-    """Extract title from first heading in markdown."""
+    """Extract title from first heading in markdown, skipping common headers."""
+    lines = markdown_text.split('\n')
+    
+    # Generic patterns to skip
+    skip_patterns = [
+        r'(?i)^conference\s+on',
+        r'(?i)^proceedings\s+of',
+        r'(?i)^journal\s+of',
+        r'(?i)^transactions\s+on',
+        r'(?i)^ieee\s+',
+        r'(?i)^acm\s+',
+        r'(?i)^vol\.\s*\d+',
+        r'(?i)^no\.\s*\d+',
+        r'(?i)arxiv',
+        r'(?i)^accepted\s+to',
+        r'(?i)^submitted\s+to',
+        r'(?i)^preprint',
+        r'(?i)^copyright',
+        r'(?i)^published\s+in',
+        r'(?i)^\d{4}\s*$'
+    ]
+    
+    def is_skip_header(line: str) -> bool:
+        for p in skip_patterns:
+            if re.search(p, line.strip()):
+                return True
+        return False
+
     # Try H1 first
-    match = re.search(r'^#\s+(.+)$', markdown_text, re.MULTILINE)
-    if match:
-        return match.group(1).strip()
+    for line in lines:
+        match = re.search(r'^#\s+(.+)$', line)
+        if match:
+            candidate = match.group(1).strip()
+            if len(candidate) > 10 and not is_skip_header(candidate):
+                return candidate
 
     # Try first bold text
-    match = re.search(r'^\*\*(.+?)\*\*', markdown_text, re.MULTILINE)
-    if match:
-        title = match.group(1).strip()
-        if len(title) > 10:
-            return title
+    for line in lines:
+        match = re.search(r'^\*\*(.+?)\*\*', line)
+        if match:
+            candidate = match.group(1).strip()
+            if len(candidate) > 10 and not is_skip_header(candidate):
+                return candidate
 
     # First non-empty line
-    for line in markdown_text.split('\n'):
+    for line in lines:
         line = line.strip()
-        if line and len(line) > 10:
-            return line[:200]
+        # Clean markdown characters for the generic fallback check
+        cleaned = re.sub(r'^[\#\*\-]+\s*', '', line).strip()
+        if cleaned and len(cleaned) > 10 and not is_skip_header(cleaned):
+            return cleaned[:200]
 
     return "Untitled"
 
