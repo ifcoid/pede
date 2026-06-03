@@ -319,23 +319,44 @@ def fetch_crossref_metadata(doi: str, expected_title: str | None = None) -> dict
             pub_date = "-".join(str(p) for p in date_parts)
 
         crossref_title = (data.get("title") or [None])[0]
-        
-        # Validasi Kecocokan Judul
-        if expected_title and crossref_title:
-            sim = check_similarity(expected_title, crossref_title)
-            if sim < 0.7:
-                logger.warning(f"CrossRef title mismatch for DOI {doi}. Expected: '{expected_title[:50]}...', Got: '{crossref_title[:50]}...' (Sim: {sim:.2f})")
-                # DOI kemungkinan terpotong/salah, lanjutkan ke fallback pencarian judul
-                return fallback_search_crossref_by_title(expected_title)
+        work_type = data.get("type", "")  # journal-article, proceedings-article, book, ...
 
         result = {
             "title": crossref_title,
             "authors": authors,
             "journal": (data.get("container-title") or [None])[0],
             "publication_date": pub_date,
-            "doi": data.get("DOI", doi), # Pastikan gunakan DOI resmi dari CrossRef
+            "doi": data.get("DOI", doi),  # Pastikan gunakan DOI resmi dari CrossRef
             "keywords": data.get("subject", []),
         }
+
+        # Validasi kecocokan judul untuk mendeteksi DOI yang terpotong/salah.
+        if expected_title and crossref_title:
+            sim = check_similarity(expected_title, crossref_title)
+            if sim < 0.7:
+                logger.warning(
+                    f"CrossRef title mismatch for DOI {doi}. Expected: "
+                    f"'{expected_title[:50]}...', Got: '{crossref_title[:50]}...' (Sim: {sim:.2f})"
+                )
+                # DOI yang menunjuk KONTAINER (buku/prosiding/jurnal) biasanya
+                # tanda DOI terpotong -> cari work yang benar via judul.
+                container_types = {
+                    "book", "monograph", "proceedings", "journal",
+                    "book-series", "report-series", "dataset", "edited-book",
+                }
+                if work_type in container_types:
+                    fallback = fallback_search_crossref_by_title(expected_title)
+                    if fallback:
+                        return fallback
+                    # Tidak ketemu -> biarkan caller memakai judul heuristik PDF.
+                    return None
+                # DOI menunjuk ARTIKEL nyata -> judul hasil ekstraksi PDF yang
+                # kemungkinan salah (mis. terbaca baris penulis). Percayai CrossRef.
+                logger.info(
+                    f"DOI {doi} valid (type={work_type}); memakai metadata CrossRef "
+                    f"alih-alih judul hasil ekstraksi PDF."
+                )
+                return result
 
         logger.info(f"CrossRef metadata fetched for DOI {doi}: {result['title']}")
         return result
