@@ -126,7 +126,9 @@ def extract_title_from_markdown(markdown_text: str) -> str:
         r'(?i)^consent\s+for\s+publication',
         r'(?i)^supplementary\s+material',
         r'(?i)^abbreviations?',
-        r'(?i)^keywords?'
+        r'(?i)^keywords?',
+        r'(?i)^\-*\s*start\s+of\s+(picture|image)\s+text\s*\-*$',
+        r'(?i)^\-*\s*end\s+of\s+(picture|image)\s+text\s*\-*$'
     ]
     
     def is_skip_header(line: str) -> bool:
