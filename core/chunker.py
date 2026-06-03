@@ -48,6 +48,14 @@ _SECTION_KEYWORDS_RE = re.compile(
     r'references|bibliography|appendix)\b'
 )
 
+# Markers that reveal a "header" is actually an author byline / affiliation
+# line (noise from the PDF→markdown converter), not a real section.
+_AFFILIATION_MARKER_RE = re.compile(r'\[\s*\d')  # superscript affiliation: [1], [1, 2], [1,2,*]
+_AFFILIATION_KEYWORDS_RE = re.compile(
+    r'(?i)\b(universit|departe?ment|institut|laborator|facult|fakultas|'
+    r'school\s+of|college|academy|corresponding\s+author)\b'
+)
+
 
 @dataclass
 class Chunk:
@@ -124,6 +132,24 @@ def _clean_header(text: str) -> str:
     return re.sub(r'^[#\s*_]+', '', re.sub(r'[\s*_]+$', '', text)).strip()
 
 
+def _is_noise_header(title: str) -> bool:
+    """True jika 'header' sebenarnya baris penulis/afiliasi, bukan section.
+
+    Converter PDF→markdown kadang menandai baris penulis/afiliasi sebagai
+    heading (mis. ``Weining Weng[1, 2], Yang Gu[1, 2,*] ...``). Baris seperti
+    ini diperlakukan sebagai konten biasa, bukan section header.
+    """
+    if not title:
+        return False
+    if "@" in title:                              # email
+        return True
+    if _AFFILIATION_MARKER_RE.search(title):      # [1], [1, 2], [1,2,*]
+        return True
+    if _AFFILIATION_KEYWORDS_RE.search(title):    # university/department/...
+        return True
+    return False
+
+
 def _build_section_hierarchy(header_metadata: dict) -> str:
     """Build section hierarchy string from header metadata."""
     parts = []
@@ -197,11 +223,12 @@ def _split_markdown_by_headers(markdown_text: str) -> list[tuple[str, dict]]:
 
     for line in markdown_text.split("\n"):
         m = _HEADER_RE.match(line)
-        if m:
+        title = _clean_header(m.group(2)) if m else ""
+        # Treat author/affiliation byline as body, not a section boundary.
+        if m and not _is_noise_header(title):
             flush()
             buf = [line]  # keep the header line in the section body
             level = len(m.group(1))
-            title = _clean_header(m.group(2))
             # Replace this level and clear any deeper levels.
             for lv in (1, 2, 3):
                 if lv >= level:
