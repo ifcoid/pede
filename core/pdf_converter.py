@@ -159,6 +159,28 @@ def convert_pdf_to_markdown(
     # Apply modern RAG text cleaning
     md_text = clean_markdown_text(md_text)
     
+    # Inject Image Captions for Multimodal RAG
+    def caption_replacer(match):
+        alt_text = match.group(1)
+        img_path = match.group(2)
+        
+        # If it's a local file, try to caption it
+        if not img_path.startswith("http"):
+            caption = None
+            try:
+                from core.image_captioner import generate_image_caption
+                caption = generate_image_caption(img_path)
+            except Exception as e:
+                logger.error(f"Error calling image captioner: {e}")
+            
+            if caption:
+                logger.info(f"Successfully generated caption for {img_path}")
+                return f"![{alt_text}]({img_path})\n\n> **Image Description (AI Generated):** {caption}\n"
+        
+        return match.group(0) # unchanged
+
+    md_text = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', caption_replacer, md_text)
+    
     logger.info(f"Conversion complete. Markdown length: {len(md_text)} chars")
     return md_text
 
