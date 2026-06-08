@@ -282,6 +282,12 @@ Examples:
         help="Search for chunks matching a query (for testing)",
     )
     parser.add_argument(
+        "--delete",
+        type=str,
+        default=None,
+        help="Delete all chunks of an article by its article_id",
+    )
+    parser.add_argument(
         "--doi",
         type=str,
         default=None,
@@ -339,6 +345,13 @@ Examples:
             print(f"      Article: {meta.get('title', 'N/A')}")
             print(f"      Section: {meta.get('section_header', 'N/A')}")
             print(f"      Content: {r['content'][:200]}...")
+        return
+    
+    # === Delete mode ===
+    if args.delete:
+        print(f"\nAttempting to delete article ID: {args.delete}")
+        vector_store.delete_article(args.delete)
+        print(f"✅ Successfully deleted article '{args.delete}' from Qdrant.")
         return
     
     # === Ingest mode ===
