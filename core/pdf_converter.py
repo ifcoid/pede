@@ -9,7 +9,7 @@ import fitz  # PyMuPDF
 import os
 import logging
 import re
-import pytesseract
+import numpy as np
 from pdf2image import convert_from_path
 
 logger = logging.getLogger(__name__)
@@ -43,15 +43,28 @@ def clean_markdown_text(md_text: str) -> str:
 
 
 def fallback_ocr_pdf(pdf_path: str) -> str:
-    """Fallback OCR using Tesseract for image-based or DRM-protected PDFs."""
+    """Fallback OCR using PaddleOCR for image-based or DRM-protected PDFs."""
     logger.info(f"Initiating OCR fallback for {pdf_path}")
     try:
+        from paddleocr import PaddleOCR
+        # Initialize lazily to save memory if OCR is not needed
+        ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
+        
         images = convert_from_path(pdf_path)
         ocr_text = ""
         for i, img in enumerate(images):
             logger.info(f"OCR processing page {i+1}/{len(images)}...")
-            text = pytesseract.image_to_string(img)
-            ocr_text += text + "\n\n"
+            # Convert PIL image to numpy array RGB format for PaddleOCR
+            img_np = np.array(img.convert('RGB'))
+            
+            result = ocr.ocr(img_np, cls=True)
+            # PaddleOCR returns a nested list. Sometimes result[0] is None if nothing is found.
+            if result and result[0]:
+                for line in result[0]:
+                    if line and len(line) > 1:
+                        text = line[1][0]
+                        ocr_text += text + "\n"
+            ocr_text += "\n\n"
         return ocr_text
     except Exception as e:
         logger.error(f"OCR Fallback failed: {e}")
