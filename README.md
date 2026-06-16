@@ -153,20 +153,35 @@ internet. Notebook ini menjalankan server BGE-M3 + membuka **Cloudflare Tunnel**
 
 1. Buka notebook di Colab → set **Runtime = GPU** → isi Colab Secrets `QDRANT_URL`,
    `QDRANT_API_KEY` (+ opsional `TELEGRAM_*` untuk monitor) → **Run all**.
-2. Endpoint: `POST /search` (hybrid RRF) **dan** `POST /v1/embeddings` (OpenAI-compatible,
-   dense). Dilindungi **bearer token** (`EMBED_API_KEY`) yang tercetak otomatis.
-3. Sel terakhir mencetak yang perlu ditempel ke **`.env` repo `nsa`**:
-   ```ini
-   SEARCH_ENDPOINT=https://<random>.trycloudflare.com/search
-   EMBED_API_KEY=<token>
-   EMBED_MODEL=BAAI/bge-m3
-   # opsional (bila nsa butuh vektor dense): EMBED_ENDPOINT=https://<random>.trycloudflare.com/v1
-   ```
+2. Endpoint: `POST /v1/embeddings` (OpenAI-compatible, dense) **dan** `POST /search`
+   (hybrid RRF). Dilindungi **bearer token** (`EMBED_API_KEY`) yang tercetak otomatis.
+3. Sel terakhir mencetak nilai yang perlu dipakai:
+   - **Lewat web (alur M6 di frontend `slr`):** tempel **`EMBED_ENDPOINT` (yang `/v1`)**,
+     `EMBED_API_KEY`, `EMBED_MODEL` di panel "Simpan Endpoint & Lanjut".
+   - **Lewat `.env` repo `nsa` (deploy):**
+     ```ini
+     EMBED_ENDPOINT=https://<random>.trycloudflare.com/v1   # WAJIB — dipakai M6 & menurunkan /search untuk M9
+     EMBED_API_KEY=<token>
+     EMBED_MODEL=BAAI/bge-m3
+     # opsional override (hanya jika /search beda host): SEARCH_ENDPOINT=https://<random>.trycloudflare.com/search
+     ```
 4. Biarkan sel penjaga-sesi berjalan (keep-alive + health monitor). **URL kedaluwarsa saat
-   sesi Colab berhenti** — jalankan ulang untuk URL baru, lalu perbarui `.env` `nsa`.
+   sesi Colab berhenti** — jalankan ulang untuk URL baru, lalu perbarui endpoint di `nsa`.
 
-> Server `/search` hanya butuh dependency ringan (FlagEmbedding, qdrant-client, fastapi) —
-> TIDAK perlu PaddleOCR/PyMuPDF/Gemini (itu khusus ingest), jadi start-up cepat.
+#### Endpoint mana untuk apa? (`/v1` vs `/search`)
+
+| Endpoint | Var nsa | Dipakai oleh | Untuk |
+|----------|---------|--------------|-------|
+| `POST /v1/embeddings` | `EMBED_ENDPOINT` (`…/v1`) | **Modul 6** (full-text screening) | embed *query* → top-k lokal dari Qdrant |
+| `POST /search` | `SEARCH_ENDPOINT` (`…/search`) | **Modul 9** (verifikasi sitasi) | hybrid RRF search → chunk |
+
+> **Cukup set `EMBED_ENDPOINT` (`…/v1`).** `nsa` **menurunkan** `/search` otomatis dari situ
+> (`…/v1` → `…/search`), jadi `SEARCH_ENDPOINT` hanya perlu bila host-nya berbeda. `nsa` juga
+> **toleran**: menempel URL telanjang atau yang ber-`/search` pun dinormalkan ke bentuk benar
+> — tak ada lagi `…/search/embeddings` atau `…/search/search`.
+
+> Server hanya butuh dependency ringan (FlagEmbedding, qdrant-client, fastapi) — TIDAK perlu
+> PaddleOCR/PyMuPDF/Gemini (itu khusus ingest), jadi start-up cepat.
 
 ## ✍️ RAG untuk Penulisan Manuskrip (anti-halusinasi)
 
@@ -250,12 +265,12 @@ PEDE adalah **layer ingestion + RAG** untuk orkestrator SLR Golang **`nsa`**. Al
 
 1. **Ingest** PDF korpus → Qdrant (via `ingest.py` / Colab).
 2. **Serve** `embed_server_colab.ipynb` (Colab GPU + Cloudflare Tunnel) → URL publik.
-3. Tempel `SEARCH_ENDPOINT` + `EMBED_API_KEY` ke `.env` repo **`nsa`**.
-4. `nsa` mengirim `POST /search` `{ "query": "...", "n_results": 10 }` (opsional
-   `article_ids` / `section_filter` / `doi_filter`) dan menerima chunk **hybrid RRF** —
-   logika pencarian identik dengan PEDE, tanpa duplikasi kode embedding di `nsa`.
-5. `nsa` memakai chunk ini untuk **full-text screening (Modul 6)** dan **sintesis manuskrip
-   (Modul 9)** yang ter-*ground* ke bukti (anti-halusinasi).
+3. Set **`EMBED_ENDPOINT` (`…/v1`)** + `EMBED_API_KEY` di `nsa` (via web M6 atau `.env`).
+   `nsa` menurunkan `/search` otomatis dari sini (lihat tabel *`/v1` vs `/search`* di atas).
+4. **Modul 6** (full-text screening): `nsa` embed query via `/v1/embeddings` lalu top-k
+   **lokal** dari Qdrant. **Modul 9** (verifikasi sitasi): `nsa` panggil `/search`
+   (hybrid RRF) — logika identik PEDE, tanpa duplikasi kode embedding di `nsa`.
+5. Hasilnya: keputusan screening & tulisan manuskrip **ter-*ground* ke bukti** (anti-halusinasi).
 
 > Untuk eksperimen RAG manual (di luar `nsa`), cukup panggil `POST /search` langsung —
 > lihat **[API_REFERENCE.md](API_REFERENCE.md)** untuk contoh cURL lengkap.
