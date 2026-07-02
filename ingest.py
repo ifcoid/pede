@@ -204,6 +204,25 @@ def process_single_pdf(
         return None
 
 
+def free_memory():
+    """Bebaskan memori antar-PDF agar tidak menumpuk lalu di-OOM-kill (exit=-9) di Colab.
+
+    Ingesti 60+ PDF dalam satu proses membuat cache CUDA bge-m3 terfragmentasi + objek
+    Python (markdown/chunks/images) menumpuk sampai kernel kehabisan RAM/VRAM dan proses
+    di-SIGKILL sebelum sempat mencetak ringkasan "Failed: N" (itu sebabnya notebook memunculkan
+    "Failed=?, exit=-9"). Panggil ini setelah tiap PDF. Semua di-guard: aman tanpa torch/CUDA.
+    """
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+    except Exception:
+        pass
+
+
 def collect_pdf_paths(paths: list[str]) -> list[str]:
     """Collect all PDF paths from files and directories."""
     pdf_paths = []
@@ -380,6 +399,12 @@ Examples:
             chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap,
         )
         results.append((pdf_path, meta))
+        # Bebaskan memori antar-PDF (cegah OOM/SIGKILL exit=-9 di Colab pada batch besar).
+        free_memory()
+        # Ringkasan berjalan: bila proses nanti di-OOM-kill, baris terakhir ini tetap
+        # memperlihatkan seberapa jauh progres (bukan "Failed=?").
+        ok = sum(1 for _, m in results if m is not None)
+        logger.info(f"  [progress] {i}/{len(pdf_paths)} selesai | sukses={ok} gagal={i - ok}")
     
     # === Summary ===
     success = sum(1 for _, m in results if m is not None)
