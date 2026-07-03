@@ -107,9 +107,11 @@ class VectorStore:
                     "QDRANT_URL. Periksa kembali Colab Secrets / environment."
                 )
             host = urlparse(QDRANT_URL).hostname or "?"
+            self._qdrant_host = host
             logger.info(f"Connecting to Qdrant Cloud at {host}")  # host saja, bukan key
             self.client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
         else:
+            self._qdrant_host = qdrant_path
             logger.info(f"Connecting to Qdrant Local DB at {qdrant_path}")
             self.client = QdrantClient(path=qdrant_path)
 
@@ -274,7 +276,33 @@ class VectorStore:
     # ------------------------------------------------------------------ #
     def ensure_collection(self):
         """Create collection (named dense + sparse) jika belum ada."""
-        collections = [c.name for c in self.client.get_collections().collections]
+        # xAI/self-explanatory: bila cluster Qdrant tak bisa dihubungi, jangan biarkan
+        # traceback mentah 404/koneksi lolos begitu saja — beri pesan yang menyebut
+        # host + kemungkinan akar + langkah perbaikan, agar user bisa bertindak sendiri.
+        host = getattr(self, "_qdrant_host", "?")
+        try:
+            collections = [c.name for c in self.client.get_collections().collections]
+        except Exception as e:
+            msg = str(e)
+            is404 = "404" in msg or "not found" in msg.lower()
+            hint = (
+                "Cluster Qdrant tidak ditemukan (HTTP 404). Kemungkinan penyebab:\n"
+                "  1) Cluster Qdrant Cloud sudah DIHAPUS atau di-SUSPEND (free-tier "
+                "otomatis di-hibernasi/dihapus setelah lama tidak aktif) — buka dashboard "
+                "cloud.qdrant.io, pastikan cluster berstatus aktif/running.\n"
+                "  2) QDRANT_URL salah (ID cluster/region/port keliru). URL harus persis "
+                "seperti di dashboard, mis. https://<id>.<region>.gcp.cloud.qdrant.io:6333\n"
+                "  3) API key tidak cocok dengan cluster tersebut.\n"
+                "Perbaiki QDRANT_URL / QDRANT_API_KEY di Colab Secrets lalu jalankan ulang."
+            ) if is404 else (
+                "Gagal terhubung ke Qdrant. Periksa koneksi internet, QDRANT_URL, dan "
+                "QDRANT_API_KEY di Colab Secrets, serta status cluster di cloud.qdrant.io."
+            )
+            # Tidak mencetak URL/key penuh (cegah kebocoran) — cukup host.
+            raise RuntimeError(
+                f"Tidak bisa mengakses Qdrant di host '{host}'. {hint}\n"
+                f"(detail teknis: {msg})"
+            ) from e
 
         if self.collection_name not in collections:
             self.client.create_collection(
