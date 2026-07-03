@@ -65,6 +65,31 @@ def _to_list(vec) -> list:
     return vec.tolist() if hasattr(vec, "tolist") else list(vec)
 
 
+def _qdrant_unreachable_error(host: str, e: Exception) -> RuntimeError:
+    """Bangun error yang SELF-EXPLANATORY + ACTIONABLE saat Qdrant tak bisa dihubungi.
+    Menyebut host + kemungkinan akar + langkah perbaikan; TIDAK mencetak URL/key penuh
+    (cegah kebocoran). Dipakai bersama oleh pre-flight __init__ dan ensure_collection."""
+    msg = str(e)
+    is404 = "404" in msg or "not found" in msg.lower()
+    hint = (
+        "Cluster Qdrant tidak ditemukan (HTTP 404). Kemungkinan penyebab:\n"
+        "  1) Cluster Qdrant Cloud sudah DIHAPUS atau di-SUSPEND (free-tier "
+        "otomatis di-hibernasi/dihapus setelah lama tidak aktif) — buka dashboard "
+        "cloud.qdrant.io, pastikan cluster berstatus aktif/running.\n"
+        "  2) QDRANT_URL salah (ID cluster/region/port keliru). URL harus persis "
+        "seperti di dashboard, mis. https://<id>.<region>.gcp.cloud.qdrant.io:6333\n"
+        "  3) API key tidak cocok dengan cluster tersebut.\n"
+        "Perbaiki QDRANT_URL / QDRANT_API_KEY di Colab Secrets lalu jalankan ulang."
+    ) if is404 else (
+        "Gagal terhubung ke Qdrant. Periksa koneksi internet, QDRANT_URL, dan "
+        "QDRANT_API_KEY di Colab Secrets, serta status cluster di cloud.qdrant.io."
+    )
+    return RuntimeError(
+        f"Tidak bisa mengakses Qdrant di host '{host}'. {hint}\n"
+        f"(detail teknis: {msg})"
+    )
+
+
 class VectorStore:
     """
     Mengelola embedding (hybrid dense+sparse) dan penyimpanan di Qdrant.
@@ -82,14 +107,16 @@ class VectorStore:
         collection_name: str = COLLECTION_NAME,
     ):
         logger.info("Initializing VectorStore...")
-        logger.info(f"Loading embedding model: {embedding_model}")
         self.embedding_model = embedding_model
         self.collection_name = collection_name
         self.hybrid = False          # True jika sparse tersedia (FlagEmbedding)
         self.backend = "unknown"
 
-        self._load_model(embedding_model)
-
+        # Konek + PROBE Qdrant DULU (murah) SEBELUM memuat model embedding (mahal:
+        # butuh detik + RAM/VRAM). Bila Qdrant salah konfigurasi / cluster mati,
+        # gagal-cepat dgn pesan jelas tanpa membuang waktu memuat bge-m3. PENTING:
+        # notebook Colab me-retry 4x — tanpa pre-flight ini, TIAP percobaan memuat
+        # model dulu baru gagal di Qdrant (buang menit + memori sia-sia).
         # Connect to Cloud if URL is provided, otherwise use Local DB
         if QDRANT_URL and QDRANT_API_KEY:
             # Guard: kesalahan umum adalah menukar QDRANT_URL <-> QDRANT_API_KEY.
@@ -110,15 +137,29 @@ class VectorStore:
             self._qdrant_host = host
             logger.info(f"Connecting to Qdrant Cloud at {host}")  # host saja, bukan key
             self.client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+            self._preflight_qdrant()  # gagal-cepat sebelum memuat model
         else:
             self._qdrant_host = qdrant_path
             logger.info(f"Connecting to Qdrant Local DB at {qdrant_path}")
             self.client = QdrantClient(path=qdrant_path)
 
+        logger.info(f"Loading embedding model: {embedding_model}")
+        self._load_model(embedding_model)
+
         logger.info(
             f"VectorStore ready. Backend={self.backend}, hybrid={self.hybrid}, "
             f"dim={self.vector_size}"
         )
+
+    def _preflight_qdrant(self):
+        """Probe cepat konektivitas Qdrant (list collections) agar error konfigurasi/
+        cluster-mati muncul SEBELUM model embedding dimuat. Reuse pesan actionable
+        yang sama dengan ensure_collection."""
+        host = getattr(self, "_qdrant_host", "?")
+        try:
+            self.client.get_collections()
+        except Exception as e:
+            raise _qdrant_unreachable_error(host, e) from e
 
     # ------------------------------------------------------------------ #
     #  Model loading
@@ -283,26 +324,7 @@ class VectorStore:
         try:
             collections = [c.name for c in self.client.get_collections().collections]
         except Exception as e:
-            msg = str(e)
-            is404 = "404" in msg or "not found" in msg.lower()
-            hint = (
-                "Cluster Qdrant tidak ditemukan (HTTP 404). Kemungkinan penyebab:\n"
-                "  1) Cluster Qdrant Cloud sudah DIHAPUS atau di-SUSPEND (free-tier "
-                "otomatis di-hibernasi/dihapus setelah lama tidak aktif) — buka dashboard "
-                "cloud.qdrant.io, pastikan cluster berstatus aktif/running.\n"
-                "  2) QDRANT_URL salah (ID cluster/region/port keliru). URL harus persis "
-                "seperti di dashboard, mis. https://<id>.<region>.gcp.cloud.qdrant.io:6333\n"
-                "  3) API key tidak cocok dengan cluster tersebut.\n"
-                "Perbaiki QDRANT_URL / QDRANT_API_KEY di Colab Secrets lalu jalankan ulang."
-            ) if is404 else (
-                "Gagal terhubung ke Qdrant. Periksa koneksi internet, QDRANT_URL, dan "
-                "QDRANT_API_KEY di Colab Secrets, serta status cluster di cloud.qdrant.io."
-            )
-            # Tidak mencetak URL/key penuh (cegah kebocoran) — cukup host.
-            raise RuntimeError(
-                f"Tidak bisa mengakses Qdrant di host '{host}'. {hint}\n"
-                f"(detail teknis: {msg})"
-            ) from e
+            raise _qdrant_unreachable_error(host, e) from e
 
         if self.collection_name not in collections:
             self.client.create_collection(
