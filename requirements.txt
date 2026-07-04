@@ -22,6 +22,13 @@ qdrant-client>=1.12.0
 # === HTTP Client (CrossRef API) ===
 httpx>=0.28.0
 
+# === Bibliometric / SLNA figures (core/biblio_figures.py) ===
+# Generator figur science-mapping deterministik dari MongoDB SLR (baca-saja).
+# Ringan, TANPA GPU. pymongo untuk baca korpus; matplotlib+networkx untuk figur.
+pymongo>=4.6.0
+matplotlib>=3.7.0
+networkx>=3.1
+
 # === API Server & Environment ===
 fastapi>=0.115.0
 uvicorn>=0.34.0

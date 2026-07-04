@@ -278,3 +278,32 @@ PEDE adalah **layer ingestion + RAG** untuk orkestrator SLR Golang **`nsa`**. Al
 ## License
 
 GNU GPL v3
+
+## Figur Bibliometrik / SLNA (`core/biblio_figures.py`)
+
+Generator figur *science-mapping* **ter-skrip & deterministik** dari MongoDB SLR —
+pengganti VOSviewer/biblioshiny manual, sehingga figur + data mentahnya bisa
+**di-arsip (Zenodo) & direproduksi** (menutup rantai dokumentasi Q1).
+
+**Figur:** Annual Scientific Production · Most Relevant Sources · Keyword
+Co-occurrence Network · **Thematic Map** (Callon centrality × density) · Author
+Collaboration Network. Tiap figur → **PNG + SVG + PDF + CSV** (edge list/matriks) +
+`manifest.json`.
+
+**Sumber data:** `slr_extraction` (studi included final) di-enrich metadata dari
+`slr_screening`. **READ-ONLY**; kredensial dari ENV (`MONGO_URI`, `DB_NAME`).
+
+**Jalankan (Colab):** buka `notebooks/biblio_colab.ipynb` → isi Secrets `MONGO_URI`
++ `SESSION_ID` → Run all. **Tanpa GPU.**
+
+**Jalankan (CLI):**
+```bash
+export MONGO_URI="mongodb+srv://..."   # read-only
+python -m core.biblio_figures --session <session_id> --out ./data/figures/<session_id>
+```
+Opsi: `--min-freq N` (ambang keyword/penulis), `--all` (pakai semua paper screening,
+bukan hanya included), `--db <name>`.
+
+**Reproducibility:** deterministik (sort stabil + `layout_seed=42`) → run ulang =
+figur identik. Unggah folder output (figur + CSV + manifest) ke **Zenodo** bersama
+protokol & paket reproducibility; sitasi DOI-nya di *Data Availability* manuskrip.
