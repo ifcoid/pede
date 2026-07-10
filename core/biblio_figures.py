@@ -12,6 +12,7 @@ DB_NAME) — tidak pernah di-hardcode.
 Output per sesi (folder --out):
   - annual_production.{png,svg,pdf}          + annual_production.csv
   - top_sources.{png,svg,pdf}                + top_sources.csv
+  - country_distribution.{png,svg,pdf}       + country_distribution.csv  (bila ada afiliasi)
   - keyword_cooccurrence.{png,svg,pdf}       + keyword_edges.csv, keyword_nodes.csv
   - thematic_map.{png,svg,pdf}               + thematic_map.csv
   - collaboration_network.{png,svg,pdf}      + collaboration_edges.csv
@@ -116,6 +117,66 @@ def _write_csv(outdir: str, name: str, header: list[str], rows: list[list]) -> s
     return os.path.basename(p)
 
 
+# ─────────── pengenalan negara (untuk figur distribusi geografis) ───────────
+# Nama negara + alias umum di ekspor Scopus ("Affiliations") / WoS ("Addresses"/C1).
+# Pencocokan per-segmen afiliasi, case-insensitive & deterministik. Bebas-teks jadi
+# tak sempurna, tapi menutup mayoritas kasus; segmen tak dikenal DIABAIKAN (bukan
+# mengarang negara). Multi-tenant: daftar generik lintas-bidang, bukan review-spesifik.
+_COUNTRY_ALIASES = {
+    "usa": "United States", "u.s.a.": "United States", "u.s.": "United States",
+    "united states of america": "United States", "united states": "United States",
+    "uk": "United Kingdom", "u.k.": "United Kingdom", "united kingdom": "United Kingdom",
+    "england": "United Kingdom", "scotland": "United Kingdom", "wales": "United Kingdom",
+    "uae": "United Arab Emirates", "united arab emirates": "United Arab Emirates",
+    "south korea": "South Korea", "republic of korea": "South Korea", "korea": "South Korea",
+    "russia": "Russia", "russian federation": "Russia",
+    "iran": "Iran", "islamic republic of iran": "Iran",
+    "vietnam": "Vietnam", "viet nam": "Vietnam",
+    "czech republic": "Czech Republic", "czechia": "Czech Republic",
+    "taiwan": "Taiwan", "taiwan, province of china": "Taiwan",
+    "hong kong": "Hong Kong", "macau": "Macau", "macao": "Macau",
+    "the netherlands": "Netherlands", "netherlands": "Netherlands", "holland": "Netherlands",
+    "p.r. china": "China", "pr china": "China", "peoples r china": "China",
+    "people's republic of china": "China", "china": "China", "prc": "China",
+    "turkiye": "Turkey", "türkiye": "Turkey", "turkey": "Turkey",
+}
+_COUNTRIES = {
+    "United States", "United Kingdom", "China", "Japan", "Germany", "France", "Italy",
+    "Spain", "Canada", "Australia", "India", "South Korea", "Brazil", "Russia",
+    "Netherlands", "Sweden", "Switzerland", "Belgium", "Austria", "Denmark", "Finland",
+    "Norway", "Poland", "Portugal", "Greece", "Ireland", "Iran", "Israel", "Turkey",
+    "Saudi Arabia", "United Arab Emirates", "Egypt", "South Africa", "Nigeria", "Morocco",
+    "Mexico", "Argentina", "Chile", "Colombia", "Peru", "Taiwan", "Hong Kong", "Singapore",
+    "Malaysia", "Thailand", "Indonesia", "Vietnam", "Philippines", "Pakistan", "Bangladesh",
+    "Sri Lanka", "New Zealand", "Czech Republic", "Hungary", "Romania", "Slovakia",
+    "Slovenia", "Croatia", "Serbia", "Bulgaria", "Ukraine", "Estonia", "Latvia", "Lithuania",
+    "Iceland", "Luxembourg", "Qatar", "Kuwait", "Jordan", "Lebanon", "Iraq", "Tunisia",
+    "Algeria", "Kazakhstan", "Uzbekistan", "Azerbaijan", "Georgia", "Armenia", "Belarus",
+    "Nepal", "Myanmar", "Cambodia", "Oman", "Bahrain",
+}
+_COUNTRY_LOOKUP = {c.lower(): c for c in _COUNTRIES}
+_COUNTRY_LOOKUP.update(_COUNTRY_ALIASES)
+
+
+def _extract_countries(affil: str) -> list[str]:
+    """Ekstrak negara UNIK dari string afiliasi. Pisah per-afiliasi (`;`/newline) lalu
+    pindai segmen koma dari BELAKANG (negara umumnya di segmen terakhir); satu negara
+    per afiliasi. Negara yang tak dikenal diabaikan (tidak menebak)."""
+    if not affil:
+        return []
+    found, seen = [], set()
+    for chunk in re.split(r"[;\n]", str(affil)):
+        for seg in reversed([s.strip() for s in chunk.split(",") if s.strip()]):
+            key = re.sub(r"\s+", " ", seg.lower().strip().strip("."))
+            canon = _COUNTRY_LOOKUP.get(key)
+            if canon:
+                if canon not in seen:
+                    seen.add(canon)
+                    found.append(canon)
+                break  # negara afiliasi ini ketemu → lanjut afiliasi berikutnya
+    return found
+
+
 # ─────────────────────────────── data ───────────────────────────────
 
 def load_corpus(session_id: str, mongo_uri: str = "", db_name: str = "",
@@ -173,6 +234,9 @@ def load_corpus(session_id: str, mongo_uri: str = "", db_name: str = "",
             "source": str(_get(p, "Source", "source", "Journal", "journal",
                                "Publication", "Source title", "Source_title")).strip(),
             "doi": str(_get(p, "DOI", "doi")).strip(),
+            "countries": _extract_countries(_get(p, "Affiliations", "affiliations",
+                "Authors with affiliations", "Author Address", "Addresses", "C1",
+                "Reprint Address", "Affiliation", "affiliation", "Country", "country")),
             "cited": 0,
         })
         c = _get(p, "Cited", "cited", "Cited by", "Citations", "citations", default="")
@@ -223,6 +287,32 @@ def fig_top_sources(corpus, outdir, top_n=15) -> dict:
     csv = _write_csv(outdir, "top_sources", ["source", "documents"],
                      [[s, v] for s, v in sorted(srcs.items(), key=lambda kv: (-kv[1], kv[0]))])
     return {"figure": "top_sources", "files": files, "data": csv, "n_sources": len(srcs)}
+
+
+def fig_country_distribution(corpus, outdir, top_n=25) -> dict:
+    """Distribusi geografis: jumlah DOKUMEN dengan ≥1 afiliasi dari tiap negara (satu
+    dokumen dihitung sekali per negara unik yang muncul). Di-skip bila korpus tak memuat
+    data afiliasi/negara (kolom Affiliations kosong di ekspor database)."""
+    cnt = Counter()
+    for p in corpus:
+        for c in set(p.get("countries", [])):
+            cnt[c] += 1
+    if not cnt:
+        return {"figure": "country_distribution",
+                "skipped": "tak ada data negara/afiliasi di korpus (kolom 'Affiliations' kosong pada ekspor database)"}
+    ordered = sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0]))
+    items = ordered[:top_n]
+    labels = [c for c, _ in items][::-1]
+    vals = [v for _, v in items][::-1]
+    fig, ax = plt.subplots(figsize=(8, max(3.5, 0.4 * len(items) + 1)))
+    ax.barh(labels, vals, color="#0e7c7b")
+    ax.set_title("Country Scientific Production", fontsize=13, weight="bold")
+    ax.set_xlabel("Documents")
+    ax.grid(True, axis="x", alpha=0.25)
+    files = _save(fig, outdir, "country_distribution")
+    csv = _write_csv(outdir, "country_distribution", ["country", "documents"],
+                     [[c, v] for c, v in ordered])
+    return {"figure": "country_distribution", "files": files, "data": csv, "n_countries": len(cnt)}
 
 
 def _keyword_graph(corpus, min_freq=2, min_edge=1):
@@ -391,7 +481,7 @@ def generate_all(session_id: str, outdir: str, mongo_uri: str = "", db_name: str
             json.dump(manifest, f, indent=2, ensure_ascii=False)
         return manifest
 
-    for fn in (fig_annual_production, fig_top_sources):
+    for fn in (fig_annual_production, fig_top_sources, fig_country_distribution):
         r = fn(corpus, outdir)
         if r:
             manifest["figures"].append(r)
